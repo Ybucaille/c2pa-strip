@@ -14,13 +14,13 @@ mod jumbf;
 
 use std::collections::{BTreeMap, HashSet};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use bytes::Bytes;
-use img_parts::jpeg::{markers, Jpeg, JpegSegment};
+use img_parts::jpeg::{Jpeg, JpegSegment, markers};
 use img_parts::png::{Png, PngChunk};
+use img_parts::riff::RiffChunk;
 use img_parts::riff::RiffContent;
 use img_parts::webp::WebP;
-use img_parts::riff::RiffChunk;
 
 const JPEG_XMP_PREFIX: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
 const PNG_XMP_KEYWORD: &[u8] = b"XML:com.adobe.xmp";
@@ -94,7 +94,10 @@ fn strip_jpeg(data: Bytes) -> Result<(Option<Bytes>, Findings)> {
         let c = seg.contents();
         if c.len() >= 16 && c.starts_with(b"JP") {
             let seq = u32::from_be_bytes(c[4..8].try_into().unwrap());
-            groups.entry([c[2], c[3]]).or_default().push((seq, c.clone()));
+            groups
+                .entry([c[2], c[3]])
+                .or_default()
+                .push((seq, c.clone()));
         }
     }
 
@@ -103,7 +106,11 @@ fn strip_jpeg(data: Bytes) -> Result<(Option<Bytes>, Findings)> {
         packets.sort_by_key(|(seq, _)| *seq);
         let mut payload = Vec::new();
         for (_, packet) in &packets {
-            let header = if packet[8..12] == [0, 0, 0, 1] { 24 } else { 16 };
+            let header = if packet[8..12] == [0, 0, 0, 1] {
+                24
+            } else {
+                16
+            };
             if &packet[12..16] != b"jumb" || packet.len() < header {
                 payload.clear();
                 break;
@@ -256,7 +263,8 @@ mod tests {
 
     #[test]
     fn xmp_attribute_is_removed() {
-        let xmp = br#"<rdf:Description rdf:about="" dcterms:provenance="self#jumbf=/c2pa/x" xmp:A="1"/>"#;
+        let xmp =
+            br#"<rdf:Description rdf:about="" dcterms:provenance="self#jumbf=/c2pa/x" xmp:A="1"/>"#;
         let out = strip_xmp_provenance(xmp).unwrap();
         assert_eq!(out, br#"<rdf:Description rdf:about="" xmp:A="1"/>"#);
     }

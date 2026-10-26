@@ -3,7 +3,7 @@ use std::process::Command;
 
 use bytes::Bytes;
 use c2pa_strip::{inspect, strip};
-use img_parts::jpeg::{markers, Jpeg, JpegSegment};
+use img_parts::jpeg::{Jpeg, JpegSegment, markers};
 use img_parts::png::{Png, PngChunk};
 use img_parts::riff::{RiffChunk, RiffContent};
 use img_parts::webp::WebP;
@@ -33,7 +33,11 @@ fn split_jpeg(d: &[u8]) -> (Vec<(u8, Vec<u8>)>, Vec<u8>) {
 fn manifest_store_box() -> Vec<u8> {
     let (segs, _) = split_jpeg(&fs::read(ADOBE).unwrap());
     let mut out = Vec::new();
-    for (i, (_, c)) in segs.iter().filter(|(m, _)| *m == markers::APP11).enumerate() {
+    for (i, (_, c)) in segs
+        .iter()
+        .filter(|(m, _)| *m == markers::APP11)
+        .enumerate()
+    {
         out.extend_from_slice(if i == 0 { &c[8..] } else { &c[16..] });
     }
     out
@@ -81,7 +85,13 @@ fn adobe_sample_strip_is_lossless() {
         if *m1 == markers::APP1 && c1.starts_with(b"http://ns.adobe.com/xap/1.0/") {
             let marker = b" dcterms:provenance=\"";
             let start = c1.windows(marker.len()).position(|w| w == marker).unwrap();
-            let end = start + marker.len() + c1[start + marker.len()..].iter().position(|&b| b == b'"').unwrap() + 1;
+            let end = start
+                + marker.len()
+                + c1[start + marker.len()..]
+                    .iter()
+                    .position(|&b| b == b'"')
+                    .unwrap()
+                + 1;
             assert_eq!(&[&c1[..start], &c1[end..]].concat(), c2);
         } else {
             assert_eq!(c1, c2);
@@ -122,8 +132,10 @@ fn non_c2pa_jumbf_in_app11_is_kept() {
     contents.extend_from_slice(&jumb);
 
     let mut jpeg = Jpeg::from_bytes(fixture("tiny.jpg").into()).unwrap();
-    jpeg.segments_mut()
-        .insert(1, JpegSegment::new_with_contents(markers::APP11, contents.into()));
+    jpeg.segments_mut().insert(
+        1,
+        JpegSegment::new_with_contents(markers::APP11, contents.into()),
+    );
     let data = jpeg.encoder().bytes().to_vec();
 
     let (out, removed) = strip(&data).unwrap();
@@ -138,7 +150,10 @@ fn text_mentioning_c2pa_is_not_a_false_positive() {
     let at = png.chunks().len() - 1;
     png.chunks_mut().insert(
         at,
-        PngChunk::new(*b"tEXt", Bytes::from_static(b"Comment\0Caitlin wrote about c2pa and contentauthenticity")),
+        PngChunk::new(
+            *b"tEXt",
+            Bytes::from_static(b"Comment\0Caitlin wrote about c2pa and contentauthenticity"),
+        ),
     );
     let data = png.encoder().bytes().to_vec();
     assert!(!inspect(&data).unwrap().has_c2pa());
@@ -151,7 +166,8 @@ fn png_cabx_and_xmp_provenance_are_removed() {
     let at = png.chunks().len() - 1; // before IEND
     let mut itxt = b"XML:com.adobe.xmp\0\0\0\0\0".to_vec();
     itxt.extend_from_slice(xmp_with_provenance());
-    png.chunks_mut().insert(at, PngChunk::new(*b"iTXt", itxt.into()));
+    png.chunks_mut()
+        .insert(at, PngChunk::new(*b"iTXt", itxt.into()));
     png.chunks_mut()
         .insert(1, PngChunk::new(*b"caBX", manifest_store_box().into()));
     let data = png.encoder().bytes().to_vec();

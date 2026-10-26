@@ -56,7 +56,9 @@ impl Description {
 
 /// Reads the `jumd` box that opens the payload of a `jumb` superbox.
 pub fn describe(superbox_payload: &[u8]) -> Option<Description> {
-    let jumd = boxes(superbox_payload).next().filter(|b| &b.kind == b"jumd")?;
+    let jumd = boxes(superbox_payload)
+        .next()
+        .filter(|b| &b.kind == b"jumd")?;
     let uuid: [u8; 16] = jumd.payload.get(..16)?.try_into().ok()?;
     let toggles = *jumd.payload.get(16)?;
     let label = (toggles & 0x02 != 0).then(|| {

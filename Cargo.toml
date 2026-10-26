@@ -2,6 +2,19 @@
 name = "c2pa-strip"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Detect and losslessly remove C2PA (Content Credentials) manifests from JPEG, PNG and WebP images"
+license = "MIT"
+repository = "https://github.com/Ybucaille/c2pa-strip"
+readme = "README.md"
+keywords = ["c2pa", "metadata", "jpeg", "png", "webp"]
+categories = ["command-line-utilities", "multimedia::images"]
+exclude = ["tests/e2e/source.*", ".github"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
 
 [dependencies]
 anyhow = "1.0.104"

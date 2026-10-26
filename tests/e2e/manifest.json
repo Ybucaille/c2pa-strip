@@ -1,0 +1,15 @@
+{
+  "alg": "es256",
+  "private_key": "es256_private.key",
+  "sign_cert": "es256_certs.pem",
+  "claim_generator_info": [{ "name": "c2pa-strip-e2e", "version": "1.0.0" }],
+  "title": "c2pa-strip end-to-end test image",
+  "assertions": [
+    {
+      "label": "c2pa.actions",
+      "data": {
+        "actions": [{ "action": "c2pa.created", "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia" }]
+      }
+    }
+  ]
+}

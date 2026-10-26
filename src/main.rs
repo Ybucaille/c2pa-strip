@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{bail, Context, Result};
-use c2pa_strip::{inspect, strip, Findings};
+use anyhow::{Context, Result, bail};
+use c2pa_strip::{Findings, inspect, strip};
 use clap::{Parser, Subcommand};
 
 /// Detect and losslessly remove C2PA (Content Credentials) manifests from
@@ -60,7 +60,10 @@ fn run(cli: Cli) -> Result<bool> {
         Command::Check { paths, recursive } => {
             let (mut found, mut failed) = (false, false);
             for file in collect(&paths, recursive)? {
-                match fs::read(&file).map_err(Into::into).and_then(|d| inspect(&d)) {
+                match fs::read(&file)
+                    .map_err(Into::into)
+                    .and_then(|d| inspect(&d))
+                {
                     Ok(f) if f.has_c2pa() => {
                         found = true;
                         println!("C2PA   {}  {}", file.display(), describe(&f));
@@ -78,7 +81,12 @@ fn run(cli: Cli) -> Result<bool> {
             }
             Ok(found)
         }
-        Command::Remove { paths, recursive, output, in_place } => {
+        Command::Remove {
+            paths,
+            recursive,
+            output,
+            in_place,
+        } => {
             let files = collect(&paths, recursive)?;
             if output.is_some() && files.len() != 1 {
                 bail!("--output needs exactly one input file");
@@ -113,7 +121,10 @@ fn remove_one(file: &Path, dest: &Path) -> Result<()> {
     // Never write a file that still carries C2PA content.
     let left = inspect(&cleaned)?;
     if left.has_c2pa() {
-        bail!("C2PA content still present after removal: {}", describe(&left));
+        bail!(
+            "C2PA content still present after removal: {}",
+            describe(&left)
+        );
     }
     write_atomic(dest, &cleaned)?;
     println!(
@@ -164,7 +175,10 @@ fn write_atomic(dest: &Path, data: &[u8]) -> Result<()> {
 
 fn is_image(path: &Path) -> bool {
     let ext = path.extension().map(|e| e.to_ascii_lowercase());
-    matches!(ext.as_ref().and_then(|e| e.to_str()), Some("jpg" | "jpeg" | "png" | "webp"))
+    matches!(
+        ext.as_ref().and_then(|e| e.to_str()),
+        Some("jpg" | "jpeg" | "png" | "webp")
+    )
 }
 
 /// Expands directories into the image files they contain. Files named on the
@@ -192,7 +206,11 @@ fn walk(dir: &Path, recursive: bool, files: &mut Vec<PathBuf>) -> Result<()> {
             if recursive {
                 walk(&path, recursive, files)?;
             }
-        } else if is_image(&path) && !path.file_stem().is_some_and(|s| s.to_string_lossy().ends_with(".clean")) {
+        } else if is_image(&path)
+            && !path
+                .file_stem()
+                .is_some_and(|s| s.to_string_lossy().ends_with(".clean"))
+        {
             files.push(path);
         }
     }
