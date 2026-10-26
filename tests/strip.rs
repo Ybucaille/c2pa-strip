@@ -239,3 +239,23 @@ fn cli_check_and_remove() {
     assert_eq!(fs::read(&img).unwrap(), fs::read(&clean).unwrap());
     assert_eq!(status(&["check", img_s]), Some(0));
 }
+
+/// Files signed in CI by the official c2patool (see tests/e2e/run.sh) from
+/// tests/e2e/source.{png,webp}. Stripping must give back the unsigned
+/// originals byte for byte.
+#[test]
+fn c2patool_signed_files_strip_back_to_the_original() {
+    for (ext, label) in [
+        ("png", "urn:c2pa:ddd5466f-bcb1-4ba9-a895-4b5bb52b5c36"),
+        ("webp", "urn:c2pa:b33f0027-7c33-4564-b58a-e6c1ce827b34"),
+    ] {
+        let signed = fixture(&format!("signed/c2patool-signed.{ext}"));
+        let original = fs::read(format!("tests/e2e/source.{ext}")).unwrap();
+
+        let found = inspect(&signed).unwrap();
+        assert_eq!(found.manifests, [label], "{ext}");
+
+        let (cleaned, _) = strip(&signed).unwrap();
+        assert_eq!(cleaned, original, "{ext}");
+    }
+}

@@ -9,7 +9,6 @@ repository = "https://github.com/Ybucaille/c2pa-strip"
 readme = "README.md"
 keywords = ["c2pa", "metadata", "jpeg", "png", "webp"]
 categories = ["command-line-utilities", "multimedia::images"]
-exclude = ["tests/e2e/source.*", ".github"]
 
 [profile.release]
 lto = true
