@@ -63,13 +63,14 @@ cargo install --git https://github.com/Ybucaille/c2pa-strip
 ## Usage
 
 ```bash
-c2pa-strip check photo.jpg pictures/       # report; exit 1 if C2PA found, 2 on error
+c2pa-strip check photo.jpg pictures/       # report; exit 1 if C2PA or AI markers found, 2 on error
 c2pa-strip remove photo.jpg                # writes photo.clean.jpg
 c2pa-strip remove photo.jpg -o out.jpg     # choose the output
 c2pa-strip remove --in-place -r pictures/  # overwrite, recursing into folders
 ```
 
 - `check` lists each manifest's label and the size of the store. Its exit code makes it usable in scripts and pre-commit hooks.
+- `check` also reports "made with AI" markers stored outside C2PA: the IPTC digital source type in XMP (`trainedAlgorithmicMedia`, `compositeWithTrainedAlgorithmicMedia`) and the PNG text chunks written by AI image generators (`parameters` from AUTOMATIC1111/Forge, `prompt`/`workflow` from ComfyUI, `invokeai_metadata`). These are detected only: `remove` leaves them in place and prints a note.
 - `remove` re-checks its own output and **refuses to write** a file that still carries C2PA data. Writes go through a temporary file, so `--in-place` never leaves a truncated image behind.
 - Folder scans skip the `*.clean.*` files from earlier runs.
 

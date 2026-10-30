@@ -17,7 +17,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Report C2PA content. Exits with 1 if any file carries some.
+    /// Report C2PA content and generative-AI markers. Exits with 1 if any
+    /// file carries some.
     Check {
         /// Image files or directories
         #[arg(required = true)]
@@ -54,7 +55,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Returns whether `check` found C2PA content anywhere.
+/// Returns whether `check` found C2PA content or AI markers anywhere.
 fn run(cli: Cli) -> Result<bool> {
     match cli.command {
         Command::Check { paths, recursive } => {
@@ -64,9 +65,17 @@ fn run(cli: Cli) -> Result<bool> {
                     .map_err(Into::into)
                     .and_then(|d| inspect(&d))
                 {
-                    Ok(f) if f.has_c2pa() => {
+                    Ok(f) if f.has_c2pa() || f.has_ai_markers() => {
                         found = true;
-                        println!("C2PA   {}  {}", file.display(), describe(&f));
+                        let tag = if f.has_c2pa() { "C2PA" } else { "AI" };
+                        let mut what = describe(&f);
+                        if f.has_ai_markers() {
+                            if !what.is_empty() {
+                                what.push_str(", ");
+                            }
+                            what.push_str(&f.ai_markers.join(", "));
+                        }
+                        println!("{tag:<7}{}  {what}", file.display());
                     }
                     Ok(_) => println!("clean  {}", file.display()),
                     Err(e) => {
@@ -116,6 +125,7 @@ fn remove_one(file: &Path, dest: &Path) -> Result<()> {
     let (cleaned, removed) = strip(&data)?;
     if !removed.has_c2pa() {
         println!("clean  {}  (nothing to remove)", file.display());
+        note_ai_markers(file, &removed);
         return Ok(());
     }
     // Never write a file that still carries C2PA content.
@@ -135,7 +145,19 @@ fn remove_one(file: &Path, dest: &Path) -> Result<()> {
         data.len(),
         cleaned.len()
     );
+    note_ai_markers(dest, &removed);
     Ok(())
+}
+
+/// AI markers outside C2PA are only detected, so say they are still there.
+fn note_ai_markers(file: &Path, f: &Findings) {
+    if f.has_ai_markers() {
+        println!(
+            "note   {}  AI marker(s) kept: {}",
+            file.display(),
+            f.ai_markers.join(", ")
+        );
+    }
 }
 
 fn describe(f: &Findings) -> String {

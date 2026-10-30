@@ -156,7 +156,68 @@ fn text_mentioning_c2pa_is_not_a_false_positive() {
         ),
     );
     let data = png.encoder().bytes().to_vec();
-    assert!(!inspect(&data).unwrap().has_c2pa());
+    let found = inspect(&data).unwrap();
+    assert!(!found.has_c2pa());
+    assert!(!found.has_ai_markers());
+}
+
+fn xmp_made_with_ai() -> &'static [u8] {
+    br#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description rdf:about="" xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/" Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/></rdf:RDF></x:xmpmeta>"#
+}
+
+/// A PNG as written by AUTOMATIC1111, plus IPTC "made with AI" XMP.
+fn png_made_with_ai() -> Vec<u8> {
+    let mut png = Png::from_bytes(fixture("tiny.png").into()).unwrap();
+    let at = png.chunks().len() - 1; // before IEND
+    let mut itxt = b"XML:com.adobe.xmp\0\0\0\0\0".to_vec();
+    itxt.extend_from_slice(xmp_made_with_ai());
+    png.chunks_mut()
+        .insert(at, PngChunk::new(*b"iTXt", itxt.into()));
+    png.chunks_mut().insert(
+        at,
+        PngChunk::new(
+            *b"tEXt",
+            Bytes::from_static(b"parameters\0a cat, Steps: 20, Sampler: Euler a"),
+        ),
+    );
+    png.encoder().bytes().to_vec()
+}
+
+#[test]
+fn ai_markers_are_reported_not_removed() {
+    let mut jpeg = Jpeg::from_bytes(fixture("tiny.jpg").into()).unwrap();
+    let mut app1 = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+    app1.extend_from_slice(xmp_made_with_ai());
+    jpeg.segments_mut().insert(
+        0,
+        JpegSegment::new_with_contents(markers::APP1, app1.into()),
+    );
+    let jpeg = jpeg.encoder().bytes().to_vec();
+
+    let mut webp = WebP::from_bytes(fixture("tiny.webp").into()).unwrap();
+    webp.chunks_mut().push(RiffChunk::new(
+        *b"XMP ",
+        RiffContent::Data(Bytes::from_static(xmp_made_with_ai())),
+    ));
+    let webp = webp.encoder().bytes().to_vec();
+
+    let iptc = "IPTC DigitalSourceType trainedAlgorithmicMedia";
+    for (name, data, expected) in [
+        ("jpeg", jpeg, vec![iptc]),
+        (
+            "png",
+            png_made_with_ai(),
+            vec!["PNG text \"parameters\"", iptc],
+        ),
+        ("webp", webp, vec![iptc]),
+    ] {
+        let found = inspect(&data).unwrap();
+        assert!(!found.has_c2pa(), "{name}");
+        assert_eq!(found.ai_markers, expected, "{name}");
+
+        let (out, _) = strip(&data).unwrap();
+        assert_eq!(out, data, "{name}");
+    }
 }
 
 #[test]
@@ -238,6 +299,17 @@ fn cli_check_and_remove() {
     assert_eq!(status(&["remove", "--in-place", img_s]), Some(0));
     assert_eq!(fs::read(&img).unwrap(), fs::read(&clean).unwrap());
     assert_eq!(status(&["check", img_s]), Some(0));
+
+    // AI markers make `check` fail; `remove` keeps them and says so.
+    let ai = dir.path().join("ai.png");
+    fs::write(&ai, png_made_with_ai()).unwrap();
+    let ai_s = ai.to_str().unwrap();
+    let check = Command::new(bin).args(["check", ai_s]).output().unwrap();
+    assert_eq!(check.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&check.stdout).starts_with("AI "));
+    let remove = Command::new(bin).args(["remove", ai_s]).output().unwrap();
+    assert_eq!(remove.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&remove.stdout).contains("AI marker(s) kept"));
 }
 
 /// Files signed in CI by the official c2patool (see tests/e2e/run.sh) from

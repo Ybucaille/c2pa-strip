@@ -9,6 +9,10 @@
 //! plus the `dcterms:provenance` reference that C2PA writers add to XMP.
 //! Image data, EXIF, ICC profiles and the rest of the XMP are kept byte for
 //! byte; nothing is decoded or re-encoded.
+//!
+//! Generative-AI markers stored outside C2PA (the IPTC digital source type in
+//! XMP, the text chunks AI image generators add to PNG) are reported, not
+//! removed.
 
 mod jumbf;
 
@@ -24,6 +28,15 @@ use img_parts::webp::WebP;
 
 const JPEG_XMP_PREFIX: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
 const PNG_XMP_KEYWORD: &[u8] = b"XML:com.adobe.xmp";
+
+/// IPTC digital source types meaning "made with generative AI".
+const AI_SOURCE_TYPES: &[&str] = &[
+    "trainedAlgorithmicMedia",
+    "compositeWithTrainedAlgorithmicMedia",
+];
+/// PNG text keywords written by AI image generators: AUTOMATIC1111 / Forge
+/// (`parameters`), ComfyUI (`prompt`, `workflow`), InvokeAI.
+const PNG_AI_KEYWORDS: &[&[u8]] = &[b"parameters", b"prompt", b"workflow", b"invokeai_metadata"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -55,11 +68,18 @@ pub struct Findings {
     pub store_bytes: usize,
     /// Whether XMP holds a `dcterms:provenance` pointer to the manifest.
     pub xmp_provenance: bool,
+    /// Generative-AI markers outside C2PA, e.g. `IPTC DigitalSourceType
+    /// trainedAlgorithmicMedia`. Reported only: [`strip`] keeps them.
+    pub ai_markers: Vec<String>,
 }
 
 impl Findings {
     pub fn has_c2pa(&self) -> bool {
         self.store_bytes > 0 || self.xmp_provenance
+    }
+
+    pub fn has_ai_markers(&self) -> bool {
+        !self.ai_markers.is_empty()
     }
 }
 
@@ -136,6 +156,7 @@ fn strip_jpeg(data: Bytes) -> Result<(Option<Bytes>, Findings)> {
         if seg.marker() != markers::APP1 || !seg.contents().starts_with(JPEG_XMP_PREFIX) {
             continue;
         }
+        findings.ai_markers.extend(xmp_ai_markers(seg.contents()));
         if let Some(xmp) = strip_xmp_provenance(seg.contents()) {
             findings.xmp_provenance = true;
             *seg = JpegSegment::new_with_contents(markers::APP1, xmp.into());
@@ -158,6 +179,19 @@ fn strip_png(data: Bytes) -> Result<(Option<Bytes>, Findings)> {
     }
     png.remove_chunks_by_type(*b"caBX");
 
+    for chunk in png.chunks() {
+        if !matches!(&chunk.kind(), b"tEXt" | b"zTXt" | b"iTXt") {
+            continue;
+        }
+        let c = chunk.contents();
+        let keyword = &c[..c.iter().position(|&b| b == 0).unwrap_or(c.len())];
+        if PNG_AI_KEYWORDS.contains(&keyword) {
+            findings
+                .ai_markers
+                .push(format!("PNG text \"{}\"", String::from_utf8_lossy(keyword)));
+        }
+    }
+
     for chunk in png.chunks_mut().iter_mut() {
         if chunk.kind() != *b"iTXt" {
             continue;
@@ -166,6 +200,7 @@ fn strip_png(data: Bytes) -> Result<(Option<Bytes>, Findings)> {
             continue;
         };
         let (head, text) = chunk.contents().split_at(text_start);
+        findings.ai_markers.extend(xmp_ai_markers(text));
         if let Some(xmp) = strip_xmp_provenance(text) {
             findings.xmp_provenance = true;
             *chunk = PngChunk::new(*b"iTXt", [head, &xmp].concat().into());
@@ -208,6 +243,9 @@ fn strip_webp(data: Bytes) -> Result<(Option<Bytes>, Findings)> {
     for chunk in webp.chunks_mut().iter_mut() {
         if chunk.id() != *b"XMP " {
             continue;
+        }
+        if let Some(data) = chunk.content().data() {
+            findings.ai_markers.extend(xmp_ai_markers(data));
         }
         if let Some(xmp) = chunk.content().data().and_then(|d| strip_xmp_provenance(d)) {
             findings.xmp_provenance = true;
@@ -253,6 +291,28 @@ fn strip_xmp_provenance(xmp: &[u8]) -> Option<Vec<u8>> {
     changed.then_some(out)
 }
 
+/// Lists the generative-AI IPTC digital source types named in an XMP packet
+/// (`Iptc4xmpExt:DigitalSourceType`, attribute or element form).
+fn xmp_ai_markers(xmp: &[u8]) -> Vec<String> {
+    const URI: &[u8] = b"cv.iptc.org/newscodes/digitalsourcetype/";
+
+    let mut markers = Vec::new();
+    let mut rest = xmp;
+    while let Some(start) = find(rest, URI) {
+        rest = &rest[start + URI.len()..];
+        let end = rest
+            .iter()
+            .position(|b| !b.is_ascii_alphanumeric())
+            .unwrap_or(rest.len());
+        let code = String::from_utf8_lossy(&rest[..end]);
+        let marker = format!("IPTC DigitalSourceType {code}");
+        if AI_SOURCE_TYPES.contains(&&*code) && !markers.contains(&marker) {
+            markers.push(marker);
+        }
+    }
+    markers
+}
+
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
@@ -278,5 +338,25 @@ mod tests {
     #[test]
     fn xmp_without_provenance_is_untouched() {
         assert_eq!(strip_xmp_provenance(b"<x:xmpmeta caitlin='c2pa'/>"), None);
+    }
+
+    #[test]
+    fn xmp_ai_source_types_are_listed() {
+        let xmp = br#"<rdf:Description Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/>
+<Iptc4xmpExt:DigitalSourceType>https://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia</Iptc4xmpExt:DigitalSourceType>
+<x Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"/>"#;
+        assert_eq!(
+            xmp_ai_markers(xmp),
+            [
+                "IPTC DigitalSourceType trainedAlgorithmicMedia",
+                "IPTC DigitalSourceType compositeWithTrainedAlgorithmicMedia",
+            ]
+        );
+    }
+
+    #[test]
+    fn xmp_non_ai_source_types_are_ignored() {
+        let xmp = br#"<x Iptc4xmpExt:DigitalSourceType="http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture"/>"#;
+        assert!(xmp_ai_markers(xmp).is_empty());
     }
 }
