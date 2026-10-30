@@ -3,11 +3,11 @@ name = "c2pa-strip"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Detect and losslessly remove C2PA (Content Credentials) manifests from JPEG, PNG and WebP images"
+description = "Detect and losslessly remove C2PA (Content Credentials) manifests and AI markers from JPEG, PNG, WebP, HEIF/AVIF, MP4/MOV and PDF files"
 license = "MIT"
 repository = "https://github.com/Ybucaille/c2pa-strip"
 readme = "README.md"
-keywords = ["c2pa", "metadata", "jpeg", "png", "webp"]
+keywords = ["c2pa", "metadata", "jpeg", "png", "mp4"]
 categories = ["command-line-utilities", "multimedia::images"]
 
 [profile.release]
@@ -20,6 +20,8 @@ anyhow = "1.0.104"
 bytes = "1.12.1"
 clap = { version = "4.6.7", features = ["derive"] }
 img-parts = "0.4.1"
+lopdf = { version = "0.42.0", default-features = false }
+miniz_oxide = "0.9.1"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -6,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use c2pa_strip::{Findings, inspect, strip};
 use clap::{Parser, Subcommand};
 
-/// Detect and losslessly remove C2PA (Content Credentials) manifests from
-/// JPEG, PNG and WebP images.
+/// Detect and losslessly remove C2PA (Content Credentials) manifests and AI
+/// markers from JPEG, PNG, WebP, HEIF/AVIF, MP4/MOV and PDF files.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
@@ -27,7 +27,8 @@ enum Command {
         #[arg(short, long)]
         recursive: bool,
     },
-    /// Remove C2PA content, writing `<name>.clean.<ext>` next to each file.
+    /// Remove C2PA content and AI markers, writing `<name>.clean.<ext>` next
+    /// to each file.
     Remove {
         /// Image files or directories
         #[arg(required = true)]
@@ -65,17 +66,10 @@ fn run(cli: Cli) -> Result<bool> {
                     .map_err(Into::into)
                     .and_then(|d| inspect(&d))
                 {
-                    Ok(f) if f.has_c2pa() || f.has_ai_markers() => {
+                    Ok(f) if !f.is_empty() => {
                         found = true;
                         let tag = if f.has_c2pa() { "C2PA" } else { "AI" };
-                        let mut what = describe(&f);
-                        if f.has_ai_markers() {
-                            if !what.is_empty() {
-                                what.push_str(", ");
-                            }
-                            what.push_str(&f.ai_markers.join(", "));
-                        }
-                        println!("{tag:<7}{}  {what}", file.display());
+                        println!("{tag:<7}{}  {}", file.display(), describe(&f));
                     }
                     Ok(_) => println!("clean  {}", file.display()),
                     Err(e) => {
@@ -123,18 +117,14 @@ fn run(cli: Cli) -> Result<bool> {
 fn remove_one(file: &Path, dest: &Path) -> Result<()> {
     let data = fs::read(file)?;
     let (cleaned, removed) = strip(&data)?;
-    if !removed.has_c2pa() {
+    if removed.is_empty() {
         println!("clean  {}  (nothing to remove)", file.display());
-        note_ai_markers(file, &removed);
         return Ok(());
     }
-    // Never write a file that still carries C2PA content.
+    // Never write a file that still carries C2PA content or AI markers.
     let left = inspect(&cleaned)?;
-    if left.has_c2pa() {
-        bail!(
-            "C2PA content still present after removal: {}",
-            describe(&left)
-        );
+    if !left.is_empty() {
+        bail!("still present after removal: {}", describe(&left));
     }
     write_atomic(dest, &cleaned)?;
     println!(
@@ -145,19 +135,7 @@ fn remove_one(file: &Path, dest: &Path) -> Result<()> {
         data.len(),
         cleaned.len()
     );
-    note_ai_markers(dest, &removed);
     Ok(())
-}
-
-/// AI markers outside C2PA are only detected, so say they are still there.
-fn note_ai_markers(file: &Path, f: &Findings) {
-    if f.has_ai_markers() {
-        println!(
-            "note   {}  AI marker(s) kept: {}",
-            file.display(),
-            f.ai_markers.join(", ")
-        );
-    }
 }
 
 fn describe(f: &Findings) -> String {
@@ -172,6 +150,7 @@ fn describe(f: &Findings) -> String {
     if f.xmp_provenance {
         parts.push("XMP provenance link".into());
     }
+    parts.extend(f.ai_markers.iter().cloned());
     parts.join(", ")
 }
 
@@ -199,7 +178,19 @@ fn is_image(path: &Path) -> bool {
     let ext = path.extension().map(|e| e.to_ascii_lowercase());
     matches!(
         ext.as_ref().and_then(|e| e.to_str()),
-        Some("jpg" | "jpeg" | "png" | "webp")
+        Some(
+            "jpg"
+                | "jpeg"
+                | "png"
+                | "webp"
+                | "heic"
+                | "heif"
+                | "avif"
+                | "mp4"
+                | "m4v"
+                | "mov"
+                | "pdf"
+        )
     )
 }
 

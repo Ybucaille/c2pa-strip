@@ -8,11 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- `check` reports generative-AI markers outside C2PA: IPTC
-  `DigitalSourceType` in XMP (`trainedAlgorithmicMedia`,
-  `compositeWithTrainedAlgorithmicMedia`) and PNG text chunks from AI image
-  generators (`parameters`, `prompt`, `workflow`, `invokeai_metadata`).
-  `remove` keeps them and prints a note.
+- Generative-AI markers outside C2PA: IPTC `DigitalSourceType` in XMP
+  (`trainedAlgorithmicMedia`, `compositeWithTrainedAlgorithmicMedia`) and PNG
+  text chunks from AI image generators (`parameters`, `prompt`, `workflow`,
+  `invokeai_metadata`). `check` reports them, `remove` removes them.
+- HEIF, AVIF, MP4 and MOV: the top-level C2PA `uuid` box is removed and the
+  media offsets (`stco`/`co64`, `iloc`, `tfhd`, `tfra`) are moved back; the
+  top-level XMP box is cleaned. End-to-end CI test extended to MP4 and AVIF.
+- Compressed XMP in PNG `iTXt` chunks is cleaned too.
+- PDF: the embedded C2PA manifest file is removed along with its `/AF` and
+  `/EmbeddedFiles` entries, and the document XMP is cleaned. Unlike the other
+  formats the file is rewritten (with `lopdf`), not edited in place.
 
 ### Changed
 

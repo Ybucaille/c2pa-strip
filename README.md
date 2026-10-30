@@ -3,7 +3,7 @@
 # c2pa-strip
 
 **Remove C2PA / Content Credentials from your images, without touching a single pixel.**<br>
-A small, fast CLI for JPEG, PNG and WebP: it removes the manifest store and nothing else. No re-encoding, no quality loss.
+A small, fast CLI for JPEG, PNG, WebP, HEIF/AVIF, MP4/MOV and PDF: it removes the manifest store and the "made with AI" markers, and nothing else. No re-encoding, no quality loss.
 
 [![CI](https://github.com/Ybucaille/c2pa-strip/actions/workflows/ci.yml/badge.svg)](https://github.com/Ybucaille/c2pa-strip/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Ybucaille/c2pa-strip?color=d97757)](https://github.com/Ybucaille/c2pa-strip/releases/latest)
@@ -36,9 +36,9 @@ identical
 
 The cleaned file is **byte-identical to the image before it was signed**. Not just the same pixels: the exact same file.
 
-This is not a one-off demo. The [`end-to-end` CI job](.github/workflows/ci.yml) runs on every push and does the following for a PNG and a WebP:
+This is not a one-off demo. The [`end-to-end` CI job](.github/workflows/ci.yml) runs on every push and does the following for a PNG, a WebP, an MP4 and an AVIF:
 
-1. signs [`tests/e2e/source.png`](tests/e2e/source.png) and [`source.webp`](tests/e2e/source.webp) with c2patool,
+1. signs [`tests/e2e/source.png`](tests/e2e/source.png), [`source.webp`](tests/e2e/source.webp), [`tests/fixtures/tiny.mp4`](tests/fixtures/tiny.mp4) and [`tiny.avif`](tests/fixtures/tiny.avif) with c2patool,
 2. checks that `c2pa-strip check` detects the manifest,
 3. runs `c2pa-strip remove`,
 4. checks that c2patool reports `No claim found` on the result,
@@ -70,8 +70,8 @@ c2pa-strip remove --in-place -r pictures/  # overwrite, recursing into folders
 ```
 
 - `check` lists each manifest's label and the size of the store. Its exit code makes it usable in scripts and pre-commit hooks.
-- `check` also reports "made with AI" markers stored outside C2PA: the IPTC digital source type in XMP (`trainedAlgorithmicMedia`, `compositeWithTrainedAlgorithmicMedia`) and the PNG text chunks written by AI image generators (`parameters` from AUTOMATIC1111/Forge, `prompt`/`workflow` from ComfyUI, `invokeai_metadata`). These are detected only: `remove` leaves them in place and prints a note.
-- `remove` re-checks its own output and **refuses to write** a file that still carries C2PA data. Writes go through a temporary file, so `--in-place` never leaves a truncated image behind.
+- Besides C2PA, both commands handle the "made with AI" markers stored outside it: the IPTC digital source type in XMP when it says generative AI (`trainedAlgorithmicMedia`, `compositeWithTrainedAlgorithmicMedia`; other values such as `digitalCapture` are kept) and the PNG text chunks written by AI image generators (`parameters` from AUTOMATIC1111/Forge, `prompt`/`workflow` from ComfyUI, `invokeai_metadata`).
+- `remove` re-checks its own output and **refuses to write** a file that still carries C2PA data or AI markers. Writes go through a temporary file, so `--in-place` never leaves a truncated image behind.
 - Folder scans skip the `*.clean.*` files from earlier runs.
 
 ## How it works
@@ -83,9 +83,14 @@ C2PA stores its manifest in a [JUMBF](https://www.iso.org/standard/84635.html) b
 | JPEG   | APP11 segments of the C2PA store (multi-segment stores reassembled) | scan data, EXIF, ICC, other APP11 (JPEG XT) |
 | PNG    | `caBX` chunk                                                    | IDAT, all other chunks                      |
 | WebP   | `C2PA` chunk                                                    | VP8/VP8L/ALPH, EXIF, ICCP                   |
-| all    | `dcterms:provenance` link in XMP                                | the rest of the XMP                         |
+| HEIF/AVIF, MP4/MOV | top-level C2PA `uuid` box; media offsets (`stco`/`co64`, `iloc`, `tfhd`, `tfra`) moved back | `mdat`, `moov`, all other boxes |
+| PDF    | embedded C2PA manifest file (`/AFRelationship /C2PA_Manifest`), its `/AF` and `/EmbeddedFiles` entries | pages and every other object (file rewritten, see below) |
+| PNG    | AI generator text chunks (`parameters`, `prompt`, `workflow`, ...) | all other text chunks                  |
+| all    | `dcterms:provenance` link and generative-AI `DigitalSourceType` in XMP (PNG XMP compressed or not) | the rest of the XMP |
 
-The image is never decoded. That is why the output can be byte-identical and why the tool is fast.
+The image is never decoded. That is why the output can be byte-identical and why the tool is fast. In HEIF/AVIF/MP4/MOV, removing a box shifts the media data, so the absolute offsets pointing at it are rewritten; a file whose offsets cannot be patched safely is refused, never written broken.
+
+PDF is the one exception to byte-for-byte output. C2PA adds its manifest to a PDF as an embedded file through an incremental update, so removing it means rewriting the document as a single revision (with [lopdf](https://crates.io/crates/lopdf)): page content and all other objects are kept as they are, but the file bytes and its cross-reference table change, and earlier revisions are dropped. Encrypted PDFs are refused.
 
 ### Compared with C2PAremover
 
@@ -99,12 +104,14 @@ This project started as a Rust rewrite of [ngmisl/C2PAremover](https://github.co
 | False positives | any text containing "cai" | none by construction |
 | PNG | looks in `tEXt`/`iTXt` | `caBX` (where C2PA actually lives) |
 | WebP | not supported | supported |
+| HEIF/AVIF, MP4/MOV | not supported | supported, offsets patched |
+| PDF | not supported | supported (document rewritten) |
 | Verified against c2patool | no | in CI, on every push |
 
 ## Limits
 
 - **Invisible watermarks** embedded in the pixels (Google SynthID, Adobe TrustMark, ...) are not metadata. No metadata tool removes them, this one included.
-- HEIF/AVIF, MP4/MOV, PDF and compressed XMP in PNG are not handled yet.
+- In HEIF/AVIF and MP4/MOV, only the top-level XMP box is cleaned: XMP stored as a HEIF item or under `moov/udta` is left as is.
 - Removing Content Credentials removes provenance information. Use it on your own files and respect the platforms' rules.
 
 ## Development
