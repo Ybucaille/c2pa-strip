@@ -125,15 +125,15 @@ fn unlink(object: &mut Object, doomed: &HashSet<ObjectId>) {
 
 fn unlink_dict(dict: &mut Dictionary, doomed: &HashSet<ObjectId>) {
     // A name tree leaf: [key1 value1 key2 value2 ...].
-    if let Ok(Object::Array(names)) = dict.get_mut(b"Names") {
-        if names.len() % 2 == 0 {
-            *names = names
-                .chunks(2)
-                .filter(|pair| !is_doomed(&pair[1], doomed))
-                .flatten()
-                .cloned()
-                .collect();
-        }
+    if let Ok(Object::Array(names)) = dict.get_mut(b"Names")
+        && names.len() % 2 == 0
+    {
+        *names = names
+            .chunks(2)
+            .filter(|pair| !is_doomed(&pair[1], doomed))
+            .flatten()
+            .cloned()
+            .collect();
     }
     let keys: Vec<Vec<u8>> = dict
         .iter()
