@@ -8,7 +8,7 @@ A small, fast CLI for JPEG, PNG, WebP, HEIF/AVIF, MP4/MOV and PDF: it removes th
 [![CI](https://github.com/Ybucaille/c2pa-strip/actions/workflows/ci.yml/badge.svg)](https://github.com/Ybucaille/c2pa-strip/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Ybucaille/c2pa-strip?color=d97757)](https://github.com/Ybucaille/c2pa-strip/releases/latest)
 [![Verified with c2patool](https://img.shields.io/badge/verified%20with-c2patool-6f42c1)](#proof-it-works)
-[![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust 1.88+](https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macOS%20%7C%20windows-informational)](https://github.com/Ybucaille/c2pa-strip/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -54,7 +54,7 @@ The signed files are kept in [`tests/fixtures/signed/`](tests/fixtures/signed), 
 curl -sL https://github.com/Ybucaille/c2pa-strip/releases/latest/download/c2pa-strip-v0.1.0-x86_64-unknown-linux-musl.tar.gz | tar xz
 ```
 
-**From source** (Rust 1.85+):
+**From source** (Rust 1.88+):
 
 ```bash
 cargo install --git https://github.com/Ybucaille/c2pa-strip

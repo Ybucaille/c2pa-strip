@@ -2,7 +2,7 @@
 name = "c2pa-strip"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Detect and losslessly remove C2PA (Content Credentials) manifests and AI markers from JPEG, PNG, WebP, HEIF/AVIF, MP4/MOV and PDF files"
 license = "MIT"
 repository = "https://github.com/Ybucaille/c2pa-strip"

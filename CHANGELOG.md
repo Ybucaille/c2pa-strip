@@ -23,6 +23,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - `check` also exits with 1 when a file carries AI markers.
+- Minimum supported Rust version raised from 1.85 to 1.88, required by
+  `lopdf`.
 
 ## [0.1.0] - 2026-10-26
 
